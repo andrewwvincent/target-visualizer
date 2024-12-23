@@ -1,0 +1,25 @@
+.polygon-layer {
+    mix-blend-mode: multiply;
+}
+
+/* Ensure the map container has a background */
+#map {
+    background-color: #ffffff;
+}
+
+/* Style for the filters panel */
+.filters-panel {
+    background: white;
+    padding: 10px;
+    border-radius: 4px;
+    box-shadow: 0 1px 5px rgba(0,0,0,0.2);
+}
+
+/* Style for the data table */
+.dataTables_wrapper {
+    margin-top: 20px;
+    padding: 10px;
+    background: white;
+    border-radius: 4px;
+    box-shadow: 0 1px 5px rgba(0,0,0,0.2);
+}

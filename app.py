@@ -1,7 +1,10 @@
 from flask import Flask, render_template, jsonify, request
 import json
 import pandas as pd
-import mysql.connector
+try:
+    import mysql.connector as mysql
+except ImportError:
+    import MySQLdb as mysql
 from dotenv import load_dotenv
 import os
 import logging
@@ -17,12 +20,22 @@ logger = logging.getLogger(__name__)
 app = Flask(__name__)
 
 def get_mysql_connection():
-    return mysql.connector.connect(
-        host=os.getenv('MYSQL_HOST'),
-        user=os.getenv('MYSQL_USER'),
-        password=os.getenv('MYSQL_PASSWORD'),
-        database=os.getenv('MYSQL_DATABASE')
-    )
+    if 'mysql.connector' in str(mysql):
+        # Using mysql-connector-python
+        return mysql.connect(
+            host=os.getenv('MYSQL_HOST'),
+            user=os.getenv('MYSQL_USER'),
+            password=os.getenv('MYSQL_PASSWORD'),
+            database=os.getenv('MYSQL_DATABASE')
+        )
+    else:
+        # Using MySQLdb
+        return mysql.connect(
+            host=os.getenv('MYSQL_HOST'),
+            user=os.getenv('MYSQL_USER'),
+            passwd=os.getenv('MYSQL_PASSWORD'),
+            db=os.getenv('MYSQL_DATABASE')
+        )
 
 @lru_cache(maxsize=1)
 def get_buckets():

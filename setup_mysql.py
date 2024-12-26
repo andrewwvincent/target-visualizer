@@ -10,11 +10,17 @@ from dotenv import load_dotenv
 load_dotenv()
 
 def get_mysql_connection():
+    print("Connecting with following parameters:")
+    print(f"Host: {os.getenv('MYSQL_HOST')}")
+    print(f"User: {os.getenv('MYSQL_USER')}")
+    print(f"Database: {os.getenv('MYSQL_DATABASE')}")
+    
     return mysql.connector.connect(
         host=os.getenv('MYSQL_HOST'),
         user=os.getenv('MYSQL_USER'),
         password=os.getenv('MYSQL_PASSWORD'),
-        database=os.getenv('MYSQL_DATABASE')
+        database=os.getenv('MYSQL_DATABASE'),
+        allow_local_infile=True
     )
 
 def create_tables(mysql_conn):
@@ -73,6 +79,7 @@ def create_tables(mysql_conn):
     mysql_conn.commit()
 
 def migrate_data():
+    print("Starting data migration...")
     # Connect to both databases
     sqlite_conn = sqlite3.connect('education_demographics.db')
     mysql_conn = get_mysql_connection()
@@ -89,13 +96,18 @@ def migrate_data():
             
             # Read data from SQLite
             df = pd.read_sql_query(f"SELECT * FROM {table}", sqlite_conn)
+            print(f"Read {len(df)} rows from SQLite")
             
+            if len(df) == 0:
+                print(f"No data found in {table}, skipping...")
+                continue
+                
             # Prepare MySQL cursor
             mysql_cursor = mysql_conn.cursor()
             
             # Generate placeholders for the INSERT statement
             placeholders = ', '.join(['%s'] * len(df.columns))
-            columns = ', '.join(df.columns)
+            columns = ', '.join(f"`{col}`" for col in df.columns)
             
             # Insert data in batches
             batch_size = 1000
@@ -103,15 +115,24 @@ def migrate_data():
                 batch = df.iloc[i:i + batch_size]
                 values = [tuple(row) for row in batch.values]
                 
-                mysql_cursor.executemany(
-                    f"INSERT INTO {table} ({columns}) VALUES ({placeholders})",
-                    values
-                )
+                try:
+                    mysql_cursor.executemany(
+                        f"INSERT INTO {table} ({columns}) VALUES ({placeholders})",
+                        values
+                    )
+                    mysql_conn.commit()
+                    print(f"Inserted batch of {len(batch)} rows into {table}")
+                except Exception as e:
+                    print(f"Error inserting batch into {table}: {str(e)}")
+                    mysql_conn.rollback()
             
-            mysql_conn.commit()
-            print(f"Migrated {len(df)} records to {table}")
+            print(f"Completed migration of {table}")
             
+    except Exception as e:
+        print(f"Error during migration: {str(e)}")
+        raise
     finally:
+        print("Closing connections...")
         sqlite_conn.close()
         mysql_conn.close()
 

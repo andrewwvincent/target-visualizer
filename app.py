@@ -13,12 +13,6 @@ logger = logging.getLogger(__name__)
 
 app = Flask(__name__)
 
-# Global cache for expensive computations
-_cache = {}
-
-# Replace @app.before_first_request with a cache initialization flag
-_cache_initialized = False
-
 def get_db_connection():
     db_path = 'education_demographics.db'
     if not os.path.exists(db_path):
@@ -32,26 +26,24 @@ def get_db_connection():
         logger.error(f"Error connecting to database: {str(e)}")
         raise
 
-def init_cache():
-    """Initialize cache with expensive computations"""
-    logger.info("Starting cache initialization...")
+@lru_cache(maxsize=1)
+def get_buckets():
+    """Get income and population buckets with caching"""
+    logger.info("Loading buckets...")
     try:
         conn = get_db_connection()
         cursor = conn.cursor()
         
-        # Cache income buckets
-        logger.debug("Loading income buckets...")
+        # Get income buckets
         cursor.execute("""
             SELECT DISTINCT income_bucket 
             FROM zip_demographics 
             WHERE income_bucket != 'Under $100k'
             ORDER BY income_bucket
         """)
-        _cache['income_buckets'] = [row[0] for row in cursor.fetchall()]
-        logger.debug(f"Loaded {len(_cache['income_buckets'])} income buckets")
+        income_buckets = [row[0] for row in cursor.fetchall()]
         
-        # Cache population buckets
-        logger.debug("Loading population buckets...")
+        # Get population buckets
         cursor.execute("""
             SELECT DISTINCT population_bucket 
             FROM zip_demographics 
@@ -65,71 +57,21 @@ def init_cache():
                     WHEN '40,000+' THEN 6
                 END
         """)
-        _cache['population_buckets'] = [row[0] for row in cursor.fetchall()]
-        logger.debug(f"Loaded {len(_cache['population_buckets'])} population buckets")
+        population_buckets = [row[0] for row in cursor.fetchall()]
         
-        # Cache boundaries data
-        logger.debug("Loading boundary data...")
-        cursor.execute("""
-            SELECT zb.zip_code, zb.geometry, zd.income_bucket, zd.population_bucket
-            FROM zip_boundaries zb
-            JOIN zip_demographics zd ON zb.zip_code = zd.zip_code
-            WHERE zd.income_bucket != 'Under $100k'
-        """)
-        _cache['boundaries'] = [
-            {
-                'zip_code': row[0],
-                'geometry': row[1],
-                'income_bucket': row[2],
-                'population_bucket': row[3]
-            }
-            for row in cursor.fetchall()
-        ]
-        logger.debug(f"Loaded {len(_cache['boundaries'])} boundary records")
-        
-        # Cache college data
-        logger.debug("Loading college data...")
-        cursor.execute("""
-            SELECT 
-                c.NAME, c.ZIP,
-                zc.latitude, zc.longitude,
-                zd.income_bucket, zd.population_bucket
-            FROM colleges c
-            JOIN zip_coordinates zc ON c.ZIP = zc.zip_code
-            JOIN zip_demographics zd ON c.ZIP = zd.zip_code
-            WHERE zd.income_bucket != 'Under $100k'
-        """)
-        _cache['colleges'] = [dict(row) for row in cursor.fetchall()]
-        logger.debug(f"Loaded {len(_cache['colleges'])} college records")
-        
-        logger.info("Cache initialization completed successfully")
-    except Exception as e:
-        logger.error(f"Error during cache initialization: {str(e)}")
-        raise
+        return income_buckets, population_buckets
     finally:
         if 'conn' in locals():
             conn.close()
 
-@app.before_request
-def setup():
-    """Initialize the cache before any request if not already initialized"""
-    global _cache_initialized
-    if not _cache_initialized:
-        try:
-            logger.info("Initializing cache for the first time...")
-            init_cache()
-            _cache_initialized = True
-        except Exception as e:
-            logger.error(f"Failed to initialize cache: {str(e)}")
-            # Don't raise the exception here, let the route handlers deal with missing cache
-
 @app.route('/')
 def index():
     try:
+        income_buckets, population_buckets = get_buckets()
         return render_template(
             'index.html',
-            income_buckets=_cache.get('income_buckets', []),
-            population_buckets=_cache.get('population_buckets', [])
+            income_buckets=income_buckets,
+            population_buckets=population_buckets
         )
     except Exception as e:
         logger.error(f"Error in index route: {str(e)}")
@@ -138,18 +80,56 @@ def index():
 @app.route('/get_colleges')
 def get_colleges():
     try:
-        return jsonify(_cache.get('colleges', []))
+        conn = get_db_connection()
+        query = """
+        SELECT 
+            c.NAME, c.ZIP,
+            zc.latitude, zc.longitude,
+            zd.income_bucket, zd.population_bucket
+        FROM colleges c
+        JOIN zip_coordinates zc ON c.ZIP = zc.zip_code
+        JOIN zip_demographics zd ON c.ZIP = zd.zip_code
+        WHERE zd.income_bucket != 'Under $100k'
+        """
+        df = pd.read_sql_query(query, conn)
+        return jsonify(df.to_dict(orient='records'))
     except Exception as e:
         logger.error(f"Error in get_colleges: {str(e)}")
         return f"An error occurred: {str(e)}", 500
+    finally:
+        if 'conn' in locals():
+            conn.close()
 
 @app.route('/get_boundaries')
 def get_boundaries():
     try:
-        return jsonify(_cache.get('boundaries', []))
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        
+        cursor.execute("""
+            SELECT zb.zip_code, zb.geometry, zd.income_bucket, zd.population_bucket
+            FROM zip_boundaries zb
+            JOIN zip_demographics zd ON zb.zip_code = zd.zip_code
+            WHERE zd.income_bucket != 'Under $100k'
+        """)
+        
+        boundaries = [
+            {
+                'zip_code': row[0],
+                'geometry': row[1],
+                'income_bucket': row[2],
+                'population_bucket': row[3]
+            }
+            for row in cursor.fetchall()
+        ]
+        
+        return jsonify(boundaries)
     except Exception as e:
         logger.error(f"Error in get_boundaries: {str(e)}")
         return f"An error occurred: {str(e)}", 500
+    finally:
+        if 'conn' in locals():
+            conn.close()
 
 if __name__ == '__main__':
     app.run(debug=True)

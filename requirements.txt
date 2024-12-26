@@ -4,5 +4,5 @@ geopandas
 requests
 shapely
 rtree
-mysql-connector-python==8.2.0
+pymysql==1.1.0
 python-dotenv==1.0.0

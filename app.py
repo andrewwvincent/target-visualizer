@@ -1,10 +1,7 @@
 from flask import Flask, render_template, jsonify, request
 import json
 import pandas as pd
-try:
-    import mysql.connector as mysql
-except ImportError:
-    import MySQLdb as mysql
+import pymysql
 from dotenv import load_dotenv
 import os
 import logging
@@ -20,22 +17,13 @@ logger = logging.getLogger(__name__)
 app = Flask(__name__)
 
 def get_mysql_connection():
-    if 'mysql.connector' in str(mysql):
-        # Using mysql-connector-python
-        return mysql.connect(
-            host=os.getenv('MYSQL_HOST'),
-            user=os.getenv('MYSQL_USER'),
-            password=os.getenv('MYSQL_PASSWORD'),
-            database=os.getenv('MYSQL_DATABASE')
-        )
-    else:
-        # Using MySQLdb
-        return mysql.connect(
-            host=os.getenv('MYSQL_HOST'),
-            user=os.getenv('MYSQL_USER'),
-            passwd=os.getenv('MYSQL_PASSWORD'),
-            db=os.getenv('MYSQL_DATABASE')
-        )
+    return pymysql.connect(
+        host=os.getenv('MYSQL_HOST'),
+        user=os.getenv('MYSQL_USER'),
+        password=os.getenv('MYSQL_PASSWORD'),
+        database=os.getenv('MYSQL_DATABASE'),
+        cursorclass=pymysql.cursors.DictCursor
+    )
 
 @lru_cache(maxsize=1)
 def get_buckets():
@@ -43,7 +31,7 @@ def get_buckets():
     logger.info("Loading buckets...")
     try:
         conn = get_mysql_connection()
-        cursor = conn.cursor(dictionary=True)
+        cursor = conn.cursor()
         
         # Get income buckets
         cursor.execute("""
@@ -91,7 +79,7 @@ def home():
 @app.route('/api/colleges')
 def get_colleges():
     conn = get_mysql_connection()
-    cursor = conn.cursor(dictionary=True)
+    cursor = conn.cursor()
     
     try:
         # Get query parameters
@@ -157,7 +145,7 @@ def get_colleges():
 @app.route('/api/demographics')
 def get_demographics():
     conn = get_mysql_connection()
-    cursor = conn.cursor(dictionary=True)
+    cursor = conn.cursor()
     
     try:
         cursor.execute("""

@@ -47,6 +47,12 @@ def create_database():
 def create_tables(mysql_conn):
     cursor = mysql_conn.cursor()
     
+    # Drop existing tables to avoid duplicates
+    cursor.execute("DROP TABLE IF EXISTS colleges")
+    cursor.execute("DROP TABLE IF EXISTS zip_demographics")
+    cursor.execute("DROP TABLE IF EXISTS zip_coordinates")
+    cursor.execute("DROP TABLE IF EXISTS zip_boundaries")
+    
     # Create tables
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS colleges (
@@ -92,23 +98,7 @@ def create_tables(mysql_conn):
         )
     """)
 
-    # Create indexes - using DROP INDEX first to avoid duplicates
-    try:
-        cursor.execute("DROP INDEX idx_colleges_zip ON colleges")
-    except:
-        pass  # Index might not exist
-    
-    try:
-        cursor.execute("DROP INDEX idx_zip_demographics_income ON zip_demographics")
-    except:
-        pass
-        
-    try:
-        cursor.execute("DROP INDEX idx_zip_demographics_population ON zip_demographics")
-    except:
-        pass
-    
-    # Create new indexes
+    # Create indexes
     cursor.execute("CREATE INDEX idx_colleges_zip ON colleges(ZIP)")
     cursor.execute("CREATE INDEX idx_zip_demographics_income ON zip_demographics(income_bucket)")
     cursor.execute("CREATE INDEX idx_zip_demographics_population ON zip_demographics(population_bucket)")
@@ -140,8 +130,8 @@ def migrate_data():
                 columns = ['NAME', 'ADDRESS', 'CITY', 'STATE', 'ZIP', 'TELEPHONE', 'POPULATION', 'COUNTY', 'COUNTYFIPS', 'WEBSITE']
                 df = pd.read_sql_query(f"SELECT {', '.join(columns)} FROM {table}", sqlite_conn)
             elif table == 'zip_boundaries':
-                # For zip_boundaries, process in smaller chunks
-                df = pd.read_sql_query(f"SELECT * FROM {table}", sqlite_conn)
+                # For zip_boundaries, process in smaller chunks and select specific columns
+                df = pd.read_sql_query("SELECT zip_code, geometry, perimeter_meters FROM zip_boundaries", sqlite_conn)
                 # Convert geometry to smaller format if needed
                 if 'geometry' in df.columns:
                     # Truncate or simplify geometry if it's too large

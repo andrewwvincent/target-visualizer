@@ -17,16 +17,12 @@ logger = logging.getLogger(__name__)
 app = Flask(__name__)
 
 def get_mysql_connection():
-    try:
-        return mysql.connector.connect(
-            host=os.getenv('MYSQL_HOST'),
-            user=os.getenv('MYSQL_USER'),
-            password=os.getenv('MYSQL_PASSWORD'),
-            database=os.getenv('MYSQL_DATABASE')
-        )
-    except mysql.connector.Error as e:
-        logger.error(f"Error connecting to MySQL database: {e}")
-        raise
+    return mysql.connector.connect(
+        host=os.getenv('MYSQL_HOST'),
+        user=os.getenv('MYSQL_USER'),
+        password=os.getenv('MYSQL_PASSWORD'),
+        database=os.getenv('MYSQL_DATABASE')
+    )
 
 @lru_cache(maxsize=1)
 def get_buckets():
@@ -34,47 +30,47 @@ def get_buckets():
     logger.info("Loading buckets...")
     try:
         conn = get_mysql_connection()
-        cursor = conn.cursor()
+        cursor = conn.cursor(dictionary=True)
         
         # Get income buckets
         cursor.execute("""
             SELECT DISTINCT income_bucket 
             FROM zip_demographics 
-            WHERE income_bucket != 'Under $100k'
+            WHERE income_bucket IS NOT NULL 
             ORDER BY income_bucket
         """)
-        income_buckets = [row[0] for row in cursor.fetchall()]
+        income_buckets = [row['income_bucket'] for row in cursor.fetchall()]
         
         # Get population buckets
         cursor.execute("""
             SELECT DISTINCT population_bucket 
             FROM zip_demographics 
-            ORDER BY 
-                CASE population_bucket
-                    WHEN 'Under 1,000' THEN 1
-                    WHEN '1,000-5,000' THEN 2
-                    WHEN '5,000-10,000' THEN 3
-                    WHEN '10,000-25,000' THEN 4
-                    WHEN '25,000-40,000' THEN 5
-                    WHEN '40,000+' THEN 6
-                END
+            WHERE population_bucket IS NOT NULL 
+            ORDER BY population_bucket
         """)
-        population_buckets = [row[0] for row in cursor.fetchall()]
+        population_buckets = [row['population_bucket'] for row in cursor.fetchall()]
         
-        return income_buckets, population_buckets
+        return {
+            'income_buckets': income_buckets,
+            'population_buckets': population_buckets
+        }
+        
+    except Exception as e:
+        logger.error(f"Error getting buckets: {str(e)}")
+        return {'income_buckets': [], 'population_buckets': []}
     finally:
+        if 'cursor' in locals():
+            cursor.close()
         if 'conn' in locals():
             conn.close()
 
 @app.route('/')
-def index():
+def home():
     try:
-        income_buckets, population_buckets = get_buckets()
-        return render_template(
-            'index.html',
-            income_buckets=income_buckets,
-            population_buckets=population_buckets
-        )
+        buckets = get_buckets()
+        return render_template('index.html', 
+                            income_buckets=buckets['income_buckets'],
+                            population_buckets=buckets['population_buckets'])
     except Exception as e:
         logger.error(f"Error in index route: {str(e)}")
         return f"An error occurred: {str(e)}", 500
@@ -130,12 +126,16 @@ def get_colleges():
             college = dict(row)
             # Convert geometry to JSON if it exists
             if college.get('geometry'):
-                college['geometry'] = json.loads(college['geometry'])
+                try:
+                    college['geometry'] = json.loads(college['geometry'])
+                except:
+                    college['geometry'] = None
             colleges.append(college)
             
         return jsonify(colleges)
         
     except Exception as e:
+        logger.error(f"Error getting colleges: {str(e)}")
         return jsonify({'error': str(e)}), 500
     finally:
         cursor.close()
@@ -154,46 +154,18 @@ def get_demographics():
                 MIN(population) as min_population,
                 MAX(population) as max_population
             FROM zip_demographics
+            WHERE median_household_income IS NOT NULL
+            AND population IS NOT NULL
         """)
         result = cursor.fetchone()
         return jsonify(result)
         
     except Exception as e:
+        logger.error(f"Error getting demographics: {str(e)}")
         return jsonify({'error': str(e)}), 500
     finally:
         cursor.close()
         conn.close()
-
-@app.route('/get_boundaries')
-def get_boundaries():
-    try:
-        conn = get_mysql_connection()
-        cursor = conn.cursor()
-        
-        cursor.execute("""
-            SELECT zb.zip_code, zb.geometry, zd.income_bucket, zd.population_bucket
-            FROM zip_boundaries zb
-            JOIN zip_demographics zd ON zb.zip_code = zd.zip_code
-            WHERE zd.income_bucket != 'Under $100k'
-        """)
-        
-        boundaries = [
-            {
-                'zip_code': row[0],
-                'geometry': row[1],
-                'income_bucket': row[2],
-                'population_bucket': row[3]
-            }
-            for row in cursor.fetchall()
-        ]
-        
-        return jsonify(boundaries)
-    except Exception as e:
-        logger.error(f"Error in get_boundaries: {str(e)}")
-        return f"An error occurred: {str(e)}", 500
-    finally:
-        if 'conn' in locals():
-            conn.close()
 
 if __name__ == '__main__':
     app.run(debug=True)

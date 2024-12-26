@@ -9,19 +9,40 @@ from dotenv import load_dotenv
 # Load environment variables
 load_dotenv()
 
-def get_mysql_connection():
+def get_mysql_connection(with_database=True):
     print("Connecting with following parameters:")
     print(f"Host: {os.getenv('MYSQL_HOST')}")
     print(f"User: {os.getenv('MYSQL_USER')}")
-    print(f"Database: {os.getenv('MYSQL_DATABASE')}")
+    if with_database:
+        print(f"Database: {os.getenv('MYSQL_DATABASE')}")
     
-    return mysql.connector.connect(
-        host=os.getenv('MYSQL_HOST'),
-        user=os.getenv('MYSQL_USER'),
-        password=os.getenv('MYSQL_PASSWORD'),
-        database=os.getenv('MYSQL_DATABASE'),
-        allow_local_infile=True
-    )
+    config = {
+        'host': os.getenv('MYSQL_HOST'),
+        'user': os.getenv('MYSQL_USER'),
+        'password': os.getenv('MYSQL_PASSWORD'),
+        'allow_local_infile': True
+    }
+    
+    if with_database:
+        config['database'] = os.getenv('MYSQL_DATABASE')
+    
+    return mysql.connector.connect(**config)
+
+def create_database():
+    print("Creating database if it doesn't exist...")
+    conn = get_mysql_connection(with_database=False)
+    cursor = conn.cursor()
+    
+    database_name = os.getenv('MYSQL_DATABASE')
+    try:
+        cursor.execute(f"CREATE DATABASE IF NOT EXISTS `{database_name}`")
+        print(f"Database {database_name} created or already exists")
+    except Exception as e:
+        print(f"Error creating database: {str(e)}")
+        raise
+    finally:
+        cursor.close()
+        conn.close()
 
 def create_tables(mysql_conn):
     cursor = mysql_conn.cursor()
@@ -80,11 +101,14 @@ def create_tables(mysql_conn):
 
 def migrate_data():
     print("Starting data migration...")
-    # Connect to both databases
-    sqlite_conn = sqlite3.connect('education_demographics.db')
-    mysql_conn = get_mysql_connection()
-    
     try:
+        # First create the database
+        create_database()
+        
+        # Now connect with the database
+        mysql_conn = get_mysql_connection(with_database=True)
+        sqlite_conn = sqlite3.connect('education_demographics.db')
+        
         # Create tables in MySQL
         create_tables(mysql_conn)
         
@@ -133,8 +157,10 @@ def migrate_data():
         raise
     finally:
         print("Closing connections...")
-        sqlite_conn.close()
-        mysql_conn.close()
+        if 'sqlite_conn' in locals():
+            sqlite_conn.close()
+        if 'mysql_conn' in locals():
+            mysql_conn.close()
 
 if __name__ == "__main__":
     migrate_data()

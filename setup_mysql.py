@@ -92,10 +92,26 @@ def create_tables(mysql_conn):
         )
     """)
 
-    # Create indexes
-    cursor.execute("CREATE INDEX IF NOT EXISTS idx_colleges_zip ON colleges(ZIP)")
-    cursor.execute("CREATE INDEX IF NOT EXISTS idx_zip_demographics_income ON zip_demographics(income_bucket)")
-    cursor.execute("CREATE INDEX IF NOT EXISTS idx_zip_demographics_population ON zip_demographics(population_bucket)")
+    # Create indexes - using DROP INDEX first to avoid duplicates
+    try:
+        cursor.execute("DROP INDEX idx_colleges_zip ON colleges")
+    except:
+        pass  # Index might not exist
+    
+    try:
+        cursor.execute("DROP INDEX idx_zip_demographics_income ON zip_demographics")
+    except:
+        pass
+        
+    try:
+        cursor.execute("DROP INDEX idx_zip_demographics_population ON zip_demographics")
+    except:
+        pass
+    
+    # Create new indexes
+    cursor.execute("CREATE INDEX idx_colleges_zip ON colleges(ZIP)")
+    cursor.execute("CREATE INDEX idx_zip_demographics_income ON zip_demographics(income_bucket)")
+    cursor.execute("CREATE INDEX idx_zip_demographics_population ON zip_demographics(population_bucket)")
     
     mysql_conn.commit()
 

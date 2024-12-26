@@ -135,7 +135,24 @@ def migrate_data():
             print(f"Migrating {table}...")
             
             # Read data from SQLite
-            df = pd.read_sql_query(f"SELECT * FROM {table}", sqlite_conn)
+            if table == 'colleges':
+                # Select only the columns we need for colleges
+                columns = ['NAME', 'ADDRESS', 'CITY', 'STATE', 'ZIP', 'TELEPHONE', 'POPULATION', 'COUNTY', 'COUNTYFIPS', 'WEBSITE']
+                df = pd.read_sql_query(f"SELECT {', '.join(columns)} FROM {table}", sqlite_conn)
+            elif table == 'zip_boundaries':
+                # For zip_boundaries, process in smaller chunks
+                df = pd.read_sql_query(f"SELECT * FROM {table}", sqlite_conn)
+                # Convert geometry to smaller format if needed
+                if 'geometry' in df.columns:
+                    # Truncate or simplify geometry if it's too large
+                    def truncate_geometry(geom):
+                        if len(geom) > 65000:  # MySQL's default max packet size is usually around 16MB
+                            return geom[:65000]
+                        return geom
+                    df['geometry'] = df['geometry'].apply(truncate_geometry)
+            else:
+                df = pd.read_sql_query(f"SELECT * FROM {table}", sqlite_conn)
+            
             print(f"Read {len(df)} rows from SQLite")
             
             if len(df) == 0:
@@ -150,7 +167,7 @@ def migrate_data():
             columns = ', '.join(f"`{col}`" for col in df.columns)
             
             # Insert data in batches
-            batch_size = 1000
+            batch_size = 100 if table == 'zip_boundaries' else 1000  # Smaller batch size for boundaries
             for i in range(0, len(df), batch_size):
                 batch = df.iloc[i:i + batch_size]
                 values = [tuple(row) for row in batch.values]
@@ -165,6 +182,20 @@ def migrate_data():
                 except Exception as e:
                     print(f"Error inserting batch into {table}: {str(e)}")
                     mysql_conn.rollback()
+                    if "max_allowed_packet" in str(e):
+                        print("Reducing batch size due to packet size limit")
+                        # Try inserting one at a time for this batch
+                        for row in values:
+                            try:
+                                mysql_cursor.execute(
+                                    f"INSERT INTO {table} ({columns}) VALUES ({placeholders})",
+                                    row
+                                )
+                                mysql_conn.commit()
+                                print("Inserted single row successfully")
+                            except Exception as e2:
+                                print(f"Error inserting single row: {str(e2)}")
+                                mysql_conn.rollback()
             
             print(f"Completed migration of {table}")
             

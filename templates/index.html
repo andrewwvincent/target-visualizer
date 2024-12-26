@@ -56,7 +56,7 @@
                         <div id="business-filters">
                             <div class="form-check">
                                 <input class="form-check-input filter-checkbox" type="checkbox" value="colleges" 
-                                       id="business-colleges" data-filter-type="business" checked>
+                                       id="business-colleges" data-filter-type="business">
                                 <label class="form-check-label" for="business-colleges">
                                     Colleges
                                 </label>
@@ -70,7 +70,7 @@
                             {% for bucket in income_buckets %}
                             <div class="form-check">
                                 <input class="form-check-input filter-checkbox" type="checkbox" value="{{ bucket }}" 
-                                       id="income-{{ loop.index }}" data-filter-type="income" checked>
+                                       id="income-{{ loop.index }}" data-filter-type="income">
                                 <label class="form-check-label" for="income-{{ loop.index }}">
                                     {{ bucket }}
                                 </label>
@@ -85,7 +85,7 @@
                             {% for bucket in population_buckets %}
                             <div class="form-check">
                                 <input class="form-check-input filter-checkbox" type="checkbox" value="{{ bucket }}"
-                                       id="population-{{ loop.index }}" data-filter-type="population" checked>
+                                       id="population-{{ loop.index }}" data-filter-type="population">
                                 <label class="form-check-label" for="population-{{ loop.index }}">
                                     {{ bucket }}
                                 </label>

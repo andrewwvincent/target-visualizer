@@ -1,8 +1,8 @@
 let map;
 let markers = [];
 let polygons = [];
-let allColleges = [];
-let allBoundaries = [];
+let allColleges = null;  // Changed to null to indicate not loaded
+let allBoundaries = null;  // Changed to null to indicate not loaded
 let dataTable;
 
 // Initialize the map
@@ -27,7 +27,7 @@ function initDataTable(data) {
     }
     
     dataTable = $('#collegeTable').DataTable({
-        data: data,
+        data: data || [],  // Use empty array if no data
         columns: [
             { 
                 data: 'NAME',
@@ -87,46 +87,44 @@ function initDataTable(data) {
     });
 }
 
-// Fetch all data and initialize filters
-function initializeData() {
-    console.log('Fetching data...');
-    
-    // Fetch colleges
-    fetch('/get_colleges')
-        .then(response => {
+// Fetch data based on current filters
+async function fetchFilteredData() {
+    const selectedIncome = Array.from(document.querySelectorAll('input[data-filter-type="income"]:checked'))
+        .map(cb => cb.value);
+    const selectedPopulation = Array.from(document.querySelectorAll('input[data-filter-type="population"]:checked'))
+        .map(cb => cb.value);
+    const showColleges = document.querySelector('input[data-filter-type="business"][value="colleges"]').checked;
+
+    try {
+        // Only fetch colleges if they haven't been fetched and are needed
+        if (showColleges && allColleges === null && (selectedIncome.length > 0 && selectedPopulation.length > 0)) {
+            console.log('Fetching colleges...');
+            const response = await fetch('/get_colleges');
             if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
-            return response.json();
-        })
-        .then(data => {
-            console.log(`Received ${data.length} colleges from server`);
-            allColleges = data;
-            
-            // After getting colleges, fetch boundaries
-            return fetch('/get_boundaries');
-        })
-        .then(response => {
+            allColleges = await response.json();
+            console.log(`Received ${allColleges.length} colleges from server`);
+        }
+
+        // Only fetch boundaries if they haven't been fetched and filters are selected
+        if (allBoundaries === null && (selectedIncome.length > 0 && selectedPopulation.length > 0)) {
+            console.log('Fetching boundaries...');
+            const response = await fetch('/get_boundaries');
             if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
-            return response.json();
-        })
-        .then(data => {
-            console.log(`Received ${data.length} boundaries from server`);
-            allBoundaries = data;
-            
-            // Update map after getting all data
-            updateMap();
-        })
-        .catch(error => {
-            console.error('Error fetching data:', error);
-        });
+            allBoundaries = await response.json();
+            console.log(`Received ${allBoundaries.length} boundaries from server`);
+        }
+
+        updateMap();
+    } catch (error) {
+        console.error('Error fetching data:', error);
+    }
 }
 
 // Clear all map layers
 function clearMapLayers() {
-    // Clear markers
     markers.forEach(marker => map.removeLayer(marker));
     markers = [];
     
-    // Clear polygons
     polygons.forEach(polygon => map.removeLayer(polygon));
     polygons = [];
 }
@@ -135,64 +133,70 @@ function clearMapLayers() {
 function updateMap() {
     console.log('Updating map...');
     try {
-        // Clear existing layers
         clearMapLayers();
 
-        // Get selected filters
         const selectedIncome = Array.from(document.querySelectorAll('input[data-filter-type="income"]:checked'))
             .map(cb => cb.value);
         const selectedPopulation = Array.from(document.querySelectorAll('input[data-filter-type="population"]:checked'))
             .map(cb => cb.value);
         const showColleges = document.querySelector('input[data-filter-type="business"][value="colleges"]').checked;
 
-        // Filter colleges based on selections
-        const filteredColleges = allColleges.filter(college => 
+        // Only process data if we have selections
+        if (selectedIncome.length === 0 || selectedPopulation.length === 0) {
+            initDataTable([]); // Clear the table
+            return; // Exit early if no filters selected
+        }
+
+        // Filter colleges if we have them
+        const filteredColleges = allColleges ? allColleges.filter(college => 
             selectedIncome.includes(college.income_bucket) &&
             selectedPopulation.includes(college.population_bucket)
-        );
+        ) : [];
 
-        // Filter boundaries based on selections
-        const filteredBoundaries = allBoundaries.filter(boundary => 
+        // Filter boundaries if we have them
+        const filteredBoundaries = allBoundaries ? allBoundaries.filter(boundary => 
             selectedIncome.includes(boundary.income_bucket) &&
             selectedPopulation.includes(boundary.population_bucket)
-        );
+        ) : [];
 
         console.log(`Displaying ${filteredColleges.length} colleges and ${filteredBoundaries.length} boundaries after filtering`);
 
         // Update table with filtered college data
         initDataTable(filteredColleges);
 
-        // Add ZIP code polygons first (so they're underneath markers)
-        filteredBoundaries.forEach(boundary => {
-            if (boundary.geometry) {
-                try {
-                    const geojson = JSON.parse(boundary.geometry);
-                    const polygon = L.geoJSON(geojson, {
-                        style: {
-                            fillColor: '#4a0080',  // Darker purple
-                            fillOpacity: 0.35,     // Slightly increased opacity
-                            color: '#4a0080',      // Matching color for consistency
-                            weight: 0,
-                            stroke: false
-                        }
-                    });
-                    polygons.push(polygon);
-                    polygon.addTo(map);
-                } catch (e) {
-                    console.error('Error adding polygon for ZIP:', boundary.zip_code, e);
+        // Add ZIP code polygons
+        if (filteredBoundaries.length > 0) {
+            filteredBoundaries.forEach(boundary => {
+                if (boundary.geometry) {
+                    try {
+                        const geojson = JSON.parse(boundary.geometry);
+                        const polygon = L.geoJSON(geojson, {
+                            style: {
+                                fillColor: '#4a0080',
+                                fillOpacity: 0.35,
+                                color: '#4a0080',
+                                weight: 0,
+                                stroke: false
+                            }
+                        });
+                        polygons.push(polygon);
+                        polygon.addTo(map);
+                    } catch (e) {
+                        console.error('Error adding polygon for ZIP:', boundary.zip_code, e);
+                    }
                 }
-            }
-        });
+            });
+        }
 
-        // Add markers on top of polygons only if colleges should be shown
-        if (showColleges) {
+        // Add college markers if needed
+        if (showColleges && filteredColleges.length > 0) {
             filteredColleges.forEach(college => {
                 if (college.latitude && college.longitude) {
                     const marker = L.marker([college.latitude, college.longitude])
                         .bindPopup(`
                             <strong>${college.NAME}</strong><br>
-                            ${college.ADDRESS}<br>
-                            ${college.CITY}, ${college.STATE} ${college.ZIP}<br>
+                            ${college.ADDRESS || ''}<br>
+                            ${college.CITY || ''}, ${college.STATE || ''} ${college.ZIP || ''}<br>
                             Income Bucket: ${college.income_bucket}<br>
                             Population Bucket: ${college.population_bucket}
                         `);
@@ -210,10 +214,10 @@ function updateMap() {
 document.addEventListener('DOMContentLoaded', () => {
     console.log('Page loaded, initializing application...');
     initMap();
-    initializeData();
+    initDataTable([]); // Initialize with empty data
 
     // Add event listeners to checkboxes
     document.querySelectorAll('.filter-checkbox').forEach(checkbox => {
-        checkbox.addEventListener('change', updateMap);
+        checkbox.addEventListener('change', fetchFilteredData);
     });
 });

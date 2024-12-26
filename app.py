@@ -1,29 +1,34 @@
 from flask import Flask, render_template, jsonify
-import sqlite3
+import mysql.connector
 import pandas as pd
 import os
 import time
 from functools import lru_cache
 import json
 import logging
+from dotenv import load_dotenv
+
+# Load environment variables
+load_dotenv()
 
 # Configure logging
-logging.basicConfig(level=logging.DEBUG)
+logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 app = Flask(__name__)
 
 def get_db_connection():
-    db_path = 'education_demographics.db'
-    if not os.path.exists(db_path):
-        logger.error(f"Database file not found at {db_path}")
-        raise FileNotFoundError(f"Database file not found at {db_path}")
+    """Get a connection to the MySQL database"""
     try:
-        conn = sqlite3.connect(db_path)
-        conn.row_factory = sqlite3.Row  # This enables column access by name
+        conn = mysql.connector.connect(
+            host=os.getenv('MYSQL_HOST'),
+            user=os.getenv('MYSQL_USER'),
+            password=os.getenv('MYSQL_PASSWORD'),
+            database=os.getenv('MYSQL_DATABASE')
+        )
         return conn
-    except Exception as e:
-        logger.error(f"Error connecting to database: {str(e)}")
+    except mysql.connector.Error as e:
+        logger.error(f"Error connecting to MySQL database: {e}")
         raise
 
 @lru_cache(maxsize=1)

@@ -29,23 +29,57 @@ function initDataTable(data) {
     dataTable = $('#collegeTable').DataTable({
         data: data,
         columns: [
-            { data: 'NAME' },
-            { data: 'ADDRESS' },
-            { data: 'CITY' },
-            { data: 'STATE' },
-            { data: 'ZIP' },
-            { data: 'TELEPHONE' },
-            { data: 'POPULATION' },
-            { data: 'COUNTY' },
-            { data: 'COUNTYFIPS' },
+            { 
+                data: 'NAME',
+                defaultContent: ''
+            },
+            { 
+                data: 'ADDRESS',
+                defaultContent: ''
+            },
+            { 
+                data: 'CITY',
+                defaultContent: ''
+            },
+            { 
+                data: 'STATE',
+                defaultContent: ''
+            },
+            { 
+                data: 'ZIP',
+                defaultContent: ''
+            },
+            { 
+                data: 'TELEPHONE',
+                defaultContent: ''
+            },
+            { 
+                data: 'POPULATION',
+                defaultContent: ''
+            },
+            { 
+                data: 'COUNTY',
+                defaultContent: ''
+            },
+            { 
+                data: 'COUNTYFIPS',
+                defaultContent: ''
+            },
             { 
                 data: 'WEBSITE',
+                defaultContent: '',
                 render: function(data) {
                     return data ? `<a href="${data}" target="_blank">${data}</a>` : '';
                 }
             },
-            { data: 'income_bucket' },
-            { data: 'population_bucket' }
+            { 
+                data: 'income_bucket',
+                defaultContent: ''
+            },
+            { 
+                data: 'population_bucket',
+                defaultContent: ''
+            }
         ],
         pageLength: 25,
         order: [[0, 'asc']], // Sort by name by default

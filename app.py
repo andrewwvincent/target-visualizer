@@ -83,7 +83,7 @@ def get_colleges():
         conn = get_db_connection()
         query = """
         SELECT 
-            c.NAME, c.ZIP,
+            c.*,  
             zc.latitude, zc.longitude,
             zd.income_bucket, zd.population_bucket
         FROM colleges c

@@ -16,6 +16,9 @@ app = Flask(__name__)
 # Global cache for expensive computations
 _cache = {}
 
+# Replace @app.before_first_request with a cache initialization flag
+_cache_initialized = False
+
 def get_db_connection():
     db_path = 'education_demographics.db'
     if not os.path.exists(db_path):
@@ -107,22 +110,22 @@ def init_cache():
         if 'conn' in locals():
             conn.close()
 
-@app.before_first_request
+@app.before_request
 def setup():
-    """Initialize the cache before the first request"""
-    try:
-        init_cache()
-    except Exception as e:
-        logger.error(f"Failed to initialize cache: {str(e)}")
-        # Don't raise the exception here, let the route handlers deal with missing cache
+    """Initialize the cache before any request if not already initialized"""
+    global _cache_initialized
+    if not _cache_initialized:
+        try:
+            logger.info("Initializing cache for the first time...")
+            init_cache()
+            _cache_initialized = True
+        except Exception as e:
+            logger.error(f"Failed to initialize cache: {str(e)}")
+            # Don't raise the exception here, let the route handlers deal with missing cache
 
 @app.route('/')
 def index():
     try:
-        if not _cache:
-            logger.warning("Cache is empty, attempting to initialize...")
-            init_cache()
-            
         return render_template(
             'index.html',
             income_buckets=_cache.get('income_buckets', []),
@@ -135,10 +138,6 @@ def index():
 @app.route('/get_colleges')
 def get_colleges():
     try:
-        if not _cache:
-            logger.warning("Cache is empty, attempting to initialize...")
-            init_cache()
-            
         return jsonify(_cache.get('colleges', []))
     except Exception as e:
         logger.error(f"Error in get_colleges: {str(e)}")
@@ -147,10 +146,6 @@ def get_colleges():
 @app.route('/get_boundaries')
 def get_boundaries():
     try:
-        if not _cache:
-            logger.warning("Cache is empty, attempting to initialize...")
-            init_cache()
-            
         return jsonify(_cache.get('boundaries', []))
     except Exception as e:
         logger.error(f"Error in get_boundaries: {str(e)}")

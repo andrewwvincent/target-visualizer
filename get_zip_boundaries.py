@@ -27,9 +27,14 @@ def download_and_extract_zcta_shapefile():
         if response.status_code != 200:
             raise Exception(f"Failed to download shapefile: {response.status_code}")
         
+        import shutil
+        
+        # Force remove temp directory if it exists
+        if os.path.exists('temp'):
+            shutil.rmtree('temp', ignore_errors=True)
+        
         # Create a temporary directory for the files
-        if not os.path.exists('temp'):
-            os.makedirs('temp')
+        os.makedirs('temp', exist_ok=True)
         
         # Save and extract the zip file
         zip_path = 'temp/zcta.zip'
